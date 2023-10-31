@@ -1,0 +1,8 @@
+#!/bin/bash
+
+
+if [ ! -f storage.img ]; then
+  dd if=/dev/zero of=storage.img bs=1M seek=10G count=0
+fi
+
+linuxkit build --format kernel+initrd naveo.yml

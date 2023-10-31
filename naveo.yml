@@ -1,0 +1,105 @@
+kernel:
+  image: linuxkit/kernel:5.10.104
+init:
+  - linuxkit/init:8f1e6a0747acbbb4d7e24dc98f97faa8d1c6cec7
+  - linuxkit/runc:f01b88c7033180d50ae43562d72707c6881904e4
+  - linuxkit/containerd:de1b18eed76a266baa3092e5c154c84f595e56da
+  - linuxkit/ca-certificates:c1c73ef590dffb6a0138cf758fe4a4305c9864f4
+onboot:
+  - name: sysctl
+    image: linuxkit/sysctl:bdc99eeedc224439ff237990ee06e5b992c8c1ae
+  - name: sysfs
+    image: linuxkit/sysfs:c3bdb00c5e23bf566d294bafd5f7890ca319056f
+  - name: format
+    image: linuxkit/format:7efa07559dd23cb4dbebfd3ab48c50fd33625918
+  - name: mount
+    image: linuxkit/mount:422b219bb1c7051096126ac83e6dcc8b2f3f1176
+    command: ['/usr/bin/mountie', '/var/lib/']
+services:
+  - name: getty
+    image: linuxkit/getty:76951a596aa5e0867a38e28f0b94d620e948e3e8
+    env:
+      - INSECURE=true
+  - name: rngd
+    image: linuxkit/rngd:4f85d8de3f6f45973a8c88dc8fba9ec596e5495a
+  - name: dhcpcd
+    image: linuxkit/dhcpcd:52d2c4df0311b182e99241cdc382ff726755c450
+    command:
+      [
+        '/sbin/dhcpcd',
+        '--static',
+        'domain_name_servers=1.1.1.1 8.8.8.8',
+        '-f',
+        '/dhcpcd.conf',
+      ]
+  - name: ntpd
+    image: linuxkit/openntpd:d6c36ac367ed26a6eeffd8db78334d9f8041b038
+  # Monitor for image deletes and invoke a TRIM on the container filesystem
+  - name: trim-after-delete
+    image: linuxkit/trim-after-delete:533ed712cf5cede1d5aec121c3f8afc1f471f723
+  # When the host resumes from sleep, force a clock resync
+  - name: host-timesync-daemon
+    image: linuxkit/host-timesync-daemon:cc7c2f88c0e585c292624b9665412c9aca615d55
+  - name: avahi
+    image: kalmufti/avahi:57c0187f894a9d85e1aae37fb8d0bfb8befb8669
+  - name: docker
+    image: docker:20.10.18-dind
+    capabilities:
+      - all
+    net: host
+    devices:
+      - path: all
+        type: a
+    cgroupsPath: 'podruntime/docker'
+    rootfsPropagation: 'shared'
+
+    mounts:
+      - type: cgroup
+        options: ['rw', 'nosuid', 'noexec', 'nodev', 'relatime']
+      - type: bind
+        source: /dev
+        destination: /dev
+        options: ['rw', 'rbind', 'rshared']
+
+      # Mount for macOS /Users dir
+      - type: virtiofs
+        source: users
+        destination: /Users
+
+      # Mount for macOS /Volumes dir
+      - type: virtiofs
+        source: volumes
+        destination: /Volumes
+
+      # Mount for macOS /tmp dir
+      - type: virtiofs
+        source: tmp
+        destination: /private/tmp
+
+      # Mount for macOS /var dir
+      - type: virtiofs
+        source: var
+        destination: /var/folders
+
+      # Mount for macOS /private dir
+      - type: virtiofs
+        source: private
+        destination: /private
+
+    binds:
+      - /etc/resolv.conf:/etc/resolv.conf
+      - /var/lib/docker:/var/lib/docker
+      - /var/run/docker:/var/run/docker
+      - /lib/modules:/lib/modules
+      - /etc/docker/daemon.json:/etc/docker/daemon.json
+    command: ['/usr/local/bin/docker-init', '/usr/local/bin/dockerd', '--',
+              '--storage-driver', 'overlay2']
+    runtime:
+      mkdir: ['/var/lib/docker', '/var/run/docker']
+files:
+  - path: var/lib/docker
+    directory: true
+  - path: etc/docker/daemon.json
+    contents: '{"debug": true, "hosts": ["tcp://0.0.0.0:2376", "unix:///var/run/docker.sock"], "api-cors-header": "*"}'
+  - path: etc/hostname
+    contents: naveo
